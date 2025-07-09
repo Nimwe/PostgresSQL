@@ -99,6 +99,8 @@ having count(*) >=3
 order by department_id;
 
 --3.7 -> 17 Afficher les lettres qui sont l'initiale d'au moins trois employés.--
+-- Pour information : il est aussi possible d'extraire la première lettre d'une chaîne de caractères en utilisant la fonction "SUBSTRING"
+-- plus d'informations sur le fonctionnement de "SUBSTRING" à l'adresse suivante : https://neon.com/postgresql/postgresql-string-functions/postgresql-substring
 select left(last_name, 1) as "Initiale",
 count(*) as "Nombre d'employés"
 from employee
