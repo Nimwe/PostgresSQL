@@ -29,6 +29,7 @@ CREATE TABLE hotel (
 );
 
 -- Tables à insérer ici
+
 CREATE TABLE room (
 	id SERIAL primary KEY,
 	"number" VARCHAR(5) NOT NULL,
@@ -42,7 +43,7 @@ CREATE TABLE client (
 	id SERIAL PRIMARY KEY,
 	last_name VARCHAR(50) NOT NULL,
 	first_name VARCHAR(50) NOT NULL,
-	adress VARCHAR (250) NOT NULL,
+	address VARCHAR (250) NOT NULL,
 	city VARCHAR(100) NOT NULL
 );
 
@@ -59,5 +60,3 @@ CREATE TABLE booking (
 	FOREIGN KEY (client_id) REFERENCES client(id),
 	CHECK (stay_end_date > stay_start_date)
 );
-
-

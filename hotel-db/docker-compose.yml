@@ -16,7 +16,7 @@ services:
       - POSTGRES_DB=hotel
     # Redirection de port "local:conteneur"
     ports:
-      - "5433:5432"
+      - "5439:5432"
     # Le "docker engine" tente systématiquement de redémarrer le conteneur
     # de plus, le conteneur est démarrer automatiquement au lancement du "doker engine"
     restart: always
