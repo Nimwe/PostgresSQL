@@ -238,7 +238,7 @@ delete from users where id = 3;
 delete from users where id = 1;
 
 -- 3.3.2 Empêcher la suppression des commandes non livrées--
--- 3.3.1 -> 12 Implémentez une fonction ainsi que son déclencheur permettant d’empêcher ce type de suppression.--
+-- 3.3.2 -> 12 Implémentez une fonction ainsi que son déclencheur permettant d’empêcher ce type de suppression.--
 
 drop trigger if exists before_delete_order_line on order_line;
 drop function if exists check_orderline_delete();
@@ -249,7 +249,9 @@ returns trigger
 language plpgsql
 as $$
 begin
-	if old.delivered_quantity >= old.ordered_quantity then -- Vérification de la livraion qu'elle soit livrée entierement ou partiellement--
+	raise notice 'Tentative de suppression order_id=%, line_numbre=%', old.order_id, old.line_number;
+	
+	if old.delivered_quantity < old.ordered_quantity then -- Vérification de la livraion qu'elle soit livrée entierement ou partiellement--
 		raise exception 'Suppression interdite : la commande order_id = %, n''a pas encore été complétement livrée', old.order_id;
 	end if;
 	return old;
@@ -264,19 +266,155 @@ for each row
 execute function check_orderline_delete();
 
 -- Test pour quantité livrée entierement -> delete autorisé --
-delete from order_line where order_id = 70010 ;
+delete from order_line where line_number = 2 and order_id = 70010 ;
 
 select * from order_line ;
 
 -- Test pour quantité non livrée entierement -> delete interdit --
-delete from order_line where order_id = 70250 ;
+delete from order_line where line_number = 1  and order_id = 70025;
 
+-- 3.4 Déclencheur de modification de contenu de tables --
+-- 3.4.1.2 -> Etape 1 : Création de la table --
+create table if not exists items_to_order (
+	id serial not null,
+	item_id int not null,
+	quantity int not null,
+	date_update date not null,
+	primary key (id)
+);
 
+-- Suppression des fonctions ou trigger si déjà existant --
+drop function if exists update_items_to_order();
+drop trigger if exists after_update_items_to_order on items_to_order;
+drop function if exists prevent_negative_stock();
+drop trigger if exists trig_prevent_negative_quantity on items_to_order;
 
+-- 3.4.1.2 -> Etape 2 : Création d'une fonction qui met à jour la table --
+create or replace function update_items_to_order()
+returns trigger
+language plpgsql
+as $$
+begin 
+	if new.stock <= new.stock_alert then
+	
+	update items_to_order
+	set quantity = new.stock,
+		date_update = current_date
+	where item_id = new.id; 
 
+	if not found then
+		insert into items_to_order (item_id, quantity, date_update)
+		values (new.id, new.stock, current_date);
+	end if;
 
+	else
+		delete from items_to_order 
+		where item_id = new.id;
+	end if;
 
+	return new;
 
+end;
+$$;
+
+-- 3.4.1.2 -> Etape 3 : Création du déclencheur after update --
+create trigger after_update_items_to_order
+after update on items_to_order
+for each row
+execute function update_items_to_order();
+
+-- 3.4.1.2 -> Etape 4 : Empecher la modification si la valeur est trop faible --
+-- Création de la fonction --
+create or replace function prevent_negative_stock()
+returns trigger
+language plpgsql
+as $$
+begin
+	if new.stock < 0 then
+	raise exception 'Stock = % insuffisant.', new.stock;
+	end if;
+
+	return new;
+
+end;
+$$;
+
+-- Création du déclencheur --
+create trigger trig_prevent_negative_quantity
+before update on items_to_order
+for each row
+execute function prevent_negative_stock();
+
+-- 3.4.2 Table d'audit --
+-- 3.4.2.2n-> 14 Création de la table et du déclencheur approprié --
+create table public.item_audit (
+	audit_id serial not null,
+	operation_type varchar(10) not null,
+	changed_at timestamp default current_timestamp, 
+	primary key (audit_id),
+
+	item_id integer,
+	item_code char (4),
+	name varchar(25),
+	stock_alert integer,
+	stock integer,
+	yearly_consumption integer,
+	unit varchar(15)	
+);
+
+-- Suppression des fonctions ou trigger si déjà existant --
+drop function if exists audit_item_changes();
+drop trigger if exists trig_audit_item on items_audit;
+
+-- Création de la fonction --
+create or replace function audit_item_changes()
+returns trigger
+language plpgsql
+as $$
+begin
+
+	if tg_op  = 'insert' then --  variable spéciale système fournie par PostgreSQL dans les fonctions de triggers. Indique le type d'opération SQL qui a déclenché le trigger --
+		insert into item_audit (
+			operation_type, item_id, item_code, name, stock_alert,stock, 
+			yearly_consumption, unit
+		)
+		values (
+			'insert', new.id, new.item_code, new.name, new.stock_alert, new.stock, 
+			new.yearly_consumption, new.unit
+		);
+
+	elseif tg_op = 'update' then
+		insert into item_audit (
+			operation_type, item_id, item_code, name, stock_alert,stock, 
+			yearly_consumption, unit
+		)
+		values (
+			'update', new.item_id, new.item_code, new.name, new.stock_alert, new.stock, 
+			new.yearly_consumption, new.unit
+		);
+
+	elseif tg_op = 'delete' then
+		insert into item_audit (
+			operation_type, item_id, item_code, name, stock_alert,stock, 
+			yearly_consumption, unit
+		)
+		values (
+			'delete', id, old.item_code, old.name, old.stock_alert, old.stock, 
+			old.yearly_consumption, old.unit
+		);
+
+	end if;
+
+	return null;
+
+end;
+$$;
+	
+-- Création du déclencheur --
+create trigger trig_audit_item
+after insert or update or delete on item 
+for each row
+execute function audit_item_changes();
 
 
 
